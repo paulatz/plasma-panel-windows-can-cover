@@ -8,7 +8,6 @@
 #include <plugin.h>
 
 #include <QHash>
-#include <QPointer>
 
 namespace KWin
 {
@@ -16,17 +15,15 @@ class Window;
 }
 
 /**
- * Restores the KWin 5 semantics of "Windows can cover" panels: the panel lives in the
- * normal window layer, so it interleaves with windows instead of being above or below
- * all of them.
+ * "Windows can cover" panels, active-window variant: the panel lives in the normal
+ * window layer and only ever avoids the currently focused window. When the active
+ * window overlaps the panel, the panel sits directly beneath it; otherwise it stays
+ * above all other windows.
  *
  * Protocol with the plasmashell side (org.windowscancover PanelCover), using only the
  * layer-shell layer the panel requests:
- *  - "bottom": the panel is at rest. We put it into the normal layer, just above the
- *    window that was topmost when the panel was last raised, so windows raised since
- *    then cover it.
- *  - "top": the panel was raised (screen edge, hover, popup...). We let it go above
- *    everything and remember the current topmost window.
+ *  - "bottom": at rest, stack relative to the active window (see above).
+ *  - "top": raised (screen edge, hover, popup...). Above everything.
  * Without this plugin the plasmashell side still works, with plain top/bottom layers.
  */
 class WindowsCanCover : public KWin::Plugin
@@ -38,16 +35,11 @@ public:
     ~WindowsCanCover() override;
 
 private:
-    struct Panel {
-        bool managed = false;
-        QPointer<KWin::Window> reference;
-    };
-
     void ensureRule();
     void track(KWin::Window *window);
     void evaluateAll();
-    void evaluate(KWin::Window *window, Panel &panel);
-    KWin::Window *topmostNormalWindow(KWin::Window *exclude) const;
+    void evaluate(KWin::Window *window);
+    void restackAtRest(KWin::Window *panel);
 
-    QHash<KWin::Window *, Panel> m_panels;
+    QHash<KWin::Window *, bool> m_panels; // window -> window rules applied (managed)
 };

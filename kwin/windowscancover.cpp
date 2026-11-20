@@ -46,6 +46,10 @@ WindowsCanCover::WindowsCanCover()
     });
     // A layer change request from a layer-shell client schedules a rearrange.
     connect(workspace(), &Workspace::aboutToRearrange, this, &WindowsCanCover::evaluateAll);
+    // Restack whenever focus moves: only the active window may cover the panel.
+    connect(workspace(), &Workspace::windowActivated, this, [this](Window *) {
+        evaluateAll();
+    });
 
     const auto windows = workspace()->windows();
     for (Window *window : windows) {
@@ -56,7 +60,7 @@ WindowsCanCover::WindowsCanCover()
 WindowsCanCover::~WindowsCanCover()
 {
     for (auto it = m_panels.begin(); it != m_panels.end(); ++it) {
-        if (it->managed && !it.key()->isDeleted()) {
+        if (it.value() && !it.key()->isDeleted()) {
             it.key()->finishWindowRules();
             it.key()->updateLayer();
         }
@@ -93,51 +97,51 @@ void WindowsCanCover::track(Window *window)
     if (!isPlasmaPanel(window) || m_panels.contains(window)) {
         return;
     }
-    evaluate(window, m_panels[window]);
+    m_panels[window] = false;
+    evaluate(window);
 }
 
 void WindowsCanCover::evaluateAll()
 {
     for (auto it = m_panels.begin(); it != m_panels.end(); ++it) {
         if (!it.key()->isDeleted()) {
-            evaluate(it.key(), it.value());
+            evaluate(it.key());
         }
     }
 }
 
-Window *WindowsCanCover::topmostNormalWindow(Window *exclude) const
+void WindowsCanCover::restackAtRest(Window *panel)
 {
-    const auto &order = workspace()->stackingOrder();
-    for (auto it = order.crbegin(); it != order.crend(); ++it) {
-        Window *window = *it;
-        if (window != exclude && !window->isDeleted() && window->layer() == NormalLayer) {
-            return window;
-        }
+    Window *active = workspace()->activeWindow();
+    if (active && active != panel && !active->isDeleted() && active->layer() == NormalLayer
+        && active->frameGeometry().intersects(panel->frameGeometry())) {
+        // The focused window overlaps the panel: keep the panel directly beneath
+        // it, above every other window.
+        workspace()->stackBelow(panel, active);
+    } else {
+        // Nothing focused over the panel: stay above all normal windows.
+        workspace()->raiseWindow(panel);
     }
-    return nullptr;
 }
 
-void WindowsCanCover::evaluate(Window *window, Panel &panel)
+void WindowsCanCover::evaluate(Window *window)
 {
     const Layer requested = LayerPeek::requestedLayer(window);
+    bool &managed = m_panels[window];
 
-    if (requested == BelowLayer && !panel.managed) {
-        // Rest: drop into the normal stack, above whatever was on top when we were raised.
-        panel.managed = true;
+    if (requested == BelowLayer && !managed) {
+        // Rest: live in the normal stack, avoiding only the active window.
+        managed = true;
         window->setupWindowRules();
         window->updateLayer();
-        Window *reference = panel.reference;
-        if (reference && !reference->isDeleted() && reference->layer() == NormalLayer
-            && workspace()->stackingOrder().contains(reference)) {
-            workspace()->stackAbove(window, reference);
-        } else {
-            workspace()->raiseWindow(window);
-        }
-    } else if (requested != BelowLayer && panel.managed) {
+        restackAtRest(window);
+    } else if (requested != BelowLayer && managed) {
         // Raised (or the mode was switched off): on top of everything again.
-        panel.reference = topmostNormalWindow(window);
-        panel.managed = false;
+        managed = false;
         window->finishWindowRules();
         window->updateLayer();
+    } else if (requested == BelowLayer && managed) {
+        // Already at rest: focus may have moved, restack against the new active window.
+        restackAtRest(window);
     }
 }
