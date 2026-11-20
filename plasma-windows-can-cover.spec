@@ -16,12 +16,12 @@ BuildRequires:  cmake(Qt6Widgets)
 BuildRequires:  cmake(Qt6DBus)
 BuildRequires:  cmake(KF6Config)
 BuildRequires:  cmake(KWin)
-BuildRequires:  kf6-extra-cmake-modules
+BuildRequires:  extra-cmake-modules
 # Panel.qml wraps the stock panel from the desktop shell package
-Requires:       plasma6-desktop
-Requires:       plasma6-workspace
-Requires:       layer-shell-qt6
-Requires:       kwin6
+Requires:       plasma-desktop
+Requires:       plasma-workspace
+Requires:       layer-shell-qt
+Requires:       kwin
 
 %description
 Adds back Plasma 5's "Windows can cover" panel visibility mode as an add-on,
